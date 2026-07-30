@@ -144,7 +144,7 @@ export default function VampirePage() {
     const y = edge === 2 ? -30 : edge === 3 ? HEIGHT + 30 : Math.random() * HEIGHT;
     const monsterLevel = game.highestWeaponLevel;
     const wave = Math.floor(game.elapsed / WAVE_SECONDS) + 1;
-    const wavePressure = wave <= 3 ? [0.08, 0.16, 0.28][wave - 1] : 1 + (wave - 3) * 0.38;
+    const wavePressure = wave <= 3 ? [0.08, 0.16, 0.28][wave - 1] : wave === 4 ? 0.72 : 1 + (wave - 3) * 0.38;
     const difficulty = (Math.min(2.2, game.elapsed / 120) + monsterLevel * 0.12) * wavePressure;
     const fast = wave >= 5 && Math.random() < Math.min(0.32, 0.2 + (wave - 5) * 0.015);
     const variantRoll = Math.random();
