@@ -7,7 +7,8 @@ type PartType = "shots" | "damage" | "range" | "lifesteal" | "spin" | "magnet" |
 type DropType = "coin" | "part" | "core" | "ticket" | "heal";
 type EnemyKind = "normal" | "charger" | "shooter" | "splitter" | "shard";
 type BossKind = "normal" | "storm" | "summoner";
-type ModalType = "upgrade" | "promotion" | "gameover" | null;
+type ModalType = "setup" | "upgrade" | "promotion" | "gameover" | null;
+type GameConfig = { weaponName: string; startClass: WeaponClass | null; parts: PartType[] };
 
 type Weapon = {
   level: number;
@@ -54,6 +55,8 @@ type GameState = {
   lastBossWave: number;
   upgradeTickets: Record<number, number>;
   nextId: number;
+  weaponName: string;
+  partPool: PartType[];
 };
 
 const WIDTH = 960;
@@ -67,12 +70,29 @@ const getAvailablePartTypes = (promotion: WeaponClass | null) => promotion ? ["d
 const PART_LABELS: Record<PartType, string> = { shots: "타수 증가", damage: "데미지 증가", range: "범위 증가", lifesteal: "흡혈", spin: "주변 피해", magnet: "자석", income: "돈 수급량 증가", shotSpread: "갈래 증가", shotCount: "타수 증가", pierce: "관통력", knockback: "넉백", attackSpeed: "공속 증가", daggerArc: "베기 각도", daggerHits: "베기 타수", bleed: "출혈 피해", targetCount: "공격 목표 추가" };
 const PART_ICONS: Record<PartType, string> = { shots: "✣", damage: "✹", range: "◉", lifesteal: "♥", spin: "⟲", magnet: "⌁", income: "₩", shotSpread: "✣", shotCount: "✣", pierce: "➤", knockback: "↯", attackSpeed: "⌁", daggerArc: "◒", daggerHits: "╳", bleed: "♦", targetCount: "◎" };
 
-const makeGame = (): GameState => ({
+const DEFAULT_GAME_CONFIG: GameConfig = { weaponName: "Moon Shard", startClass: null, parts: [] };
+const makeInitialParts = (parts: PartType[]) => PART_TYPES.reduce((inventory, part) => ({ ...inventory, [part]: parts.includes(part) ? 3 : 0 }), {} as Record<PartType, number>);
+const getConfigPartPool = (config: GameConfig) => Array.from(new Set([...getAvailablePartTypes(config.startClass), ...config.parts])) as PartType[];
+const parseSetupPrompt = (prompt: string, selectedClass: WeaponClass | null): GameConfig => {
+  const normalized = prompt.toLowerCase();
+  const detectedClass = selectedClass ?? (normalized.includes("샷건") || normalized.includes("shotgun") ? "shotgun" : normalized.includes("대거") || normalized.includes("단검") || normalized.includes("dagger") ? "dagger" : normalized.includes("기관총") || normalized.includes("머신건") || normalized.includes("machinegun") ? "machinegun" : null);
+  const aliases: Array<[PartType, string[]]> = [
+    ["damage", ["공격력", "데미지", "damage"]], ["magnet", ["자석", "마그넷", "magnet"]], ["income", ["돈 수급", "돈", "수급", "income"]], ["spin", ["주변 피해", "회전배기", "회전", "spin"]],
+    ["shots", ["타수 증가", "탄수", "shots"]], ["shotSpread", ["갈래", "spread"]], ["shotCount", ["추가 타수", "추가타수", "shotcount"]], ["pierce", ["관통", "pierce"]], ["knockback", ["넉백", "knockback"]], ["attackSpeed", ["공속", "공격 속도", "attackspeed"]], ["daggerArc", ["베기 각도", "각도", "arc"]], ["daggerHits", ["베기 타수", "검격", "daggerhits"]], ["bleed", ["출혈", "bleed"]], ["targetCount", ["공격 목표", "다중 목표", "타겟", "target"]],
+  ];
+  const allowed = getAvailablePartTypes(detectedClass);
+  const parts = aliases.filter(([, words]) => words.some((word) => normalized.includes(word))).map(([part]) => part).filter((part) => allowed.includes(part));
+  const firstPhrase = prompt.split(/[\n,]/)[0] ?? "";
+  const weaponName = firstPhrase.replace(/(무기|이름|방식|파츠|샷건|shotgun|대거|단검|dagger|기관총|머신건|machinegun)/gi, "").replace(/[:：]/g, " ").trim() || "Moon Shard";
+  return { weaponName: weaponName.slice(0, 24), startClass: detectedClass, parts: Array.from(new Set(parts)) };
+};
+
+const makeGame = (config: GameConfig = DEFAULT_GAME_CONFIG): GameState => ({
   player: { x: WIDTH / 2, y: HEIGHT / 2, radius: 17, hp: 100, maxHp: 100, hit: 0 },
-  weapon: { level: 0, damage: 22, range: 230, shots: 1, promotion: null, attackSpeed: 0, pierce: 0, knockback: 0, daggerArc: 60, daggerHits: 1, bleed: 0, targetCount: 1, installed: { shots: 0, damage: 0, range: 0, lifesteal: 0, spin: 0, magnet: 0, income: 0, shotSpread: 0, shotCount: 0, pierce: 0, knockback: 0, attackSpeed: 0, daggerArc: 0, daggerHits: 0, bleed: 0, targetCount: 0 } },
+  weapon: { level: 0, damage: 22, range: 230, shots: config.startClass === "shotgun" ? 5 : 1, promotion: config.startClass, attackSpeed: config.startClass === "machinegun" ? 2 : 0, pierce: 0, knockback: 0, daggerArc: config.startClass === "dagger" ? 60 : 0, daggerHits: config.startClass === "dagger" ? 1 : 0, bleed: 0, targetCount: config.startClass === "machinegun" ? 1 : 0, installed: { shots: 0, damage: 0, range: 0, lifesteal: 0, spin: 0, magnet: 0, income: 0, shotSpread: 0, shotCount: 0, pierce: 0, knockback: 0, attackSpeed: 0, daggerArc: 0, daggerHits: 0, bleed: 0, targetCount: 0 } },
   enemies: [], bullets: [], enemyBullets: [], drops: [], coins: 0, cores: 0,
-  parts: { shots: 0, damage: 0, range: 0, lifesteal: 0, spin: 0, magnet: 0, income: 0, shotSpread: 0, shotCount: 0, pierce: 0, knockback: 0, attackSpeed: 0, daggerArc: 0, daggerHits: 0, bleed: 0, targetCount: 0 }, kills: 0, elapsed: 0, fireTimer: 0, spawnTimer: 0.9, spawnWave: 1, spawnedThisWave: 0, spawnEdge: 0, spinTimer: 1.4, spinAngle: 0, nextId: 1,
-  highestWeaponLevel: 0, lastBossWave: 0, upgradeTickets: { 1: 0, 2: 0, 3: 0, 5: 0, 10: 0 },
+  parts: makeInitialParts(config.parts), kills: 0, elapsed: 0, fireTimer: 0, spawnTimer: 0.9, spawnWave: 1, spawnedThisWave: 0, spawnEdge: 0, spinTimer: 1.4, spinAngle: 0, nextId: 1,
+  highestWeaponLevel: 0, lastBossWave: 0, upgradeTickets: { 1: 0, 2: 0, 3: 0, 5: 0, 10: 0 }, weaponName: config.weaponName, partPool: getConfigPartPool(config),
 });
 
 const partChance = (weapon: Weapon, part: PartType) => Math.max(30, 90 - weapon.installed[part] * 8);
@@ -86,12 +106,12 @@ export default function VampirePage() {
   const gameRef = useRef<GameState>(makeGame());
   const keysRef = useRef<Record<string, boolean>>({});
   const runningRef = useRef(true);
-  const pausedRef = useRef(false);
-  const modalRef = useRef<ModalType>(null);
+  const pausedRef = useRef(true);
+  const modalRef = useRef<ModalType>("setup");
   const animationRef = useRef<number | null>(null);
   const audioRef = useRef<AudioContext | null>(null);
   const [snapshot, setSnapshot] = useState(() => makeGame());
-  const [modal, setModal] = useState<ModalType>(null);
+  const [modal, setModal] = useState<ModalType>("setup");
   const [selectedParts, setSelectedParts] = useState<PartType[]>([]);
   const [selectAllPartsMode, setSelectAllPartsMode] = useState(false);
   const [autoUseCores, setAutoUseCores] = useState(false);
@@ -99,6 +119,9 @@ export default function VampirePage() {
   const [attemptBoost, setAttemptBoost] = useState(0);
   const [result, setResult] = useState<string[]>([]);
   const [message, setMessage] = useState("어둠이 깨어났습니다. 살아남으세요.");
+  const [setupPrompt, setSetupPrompt] = useState("");
+  const [setupClass, setSetupClass] = useState<WeaponClass | null>(null);
+  const setupPreview = useMemo(() => parseSetupPrompt(setupPrompt, setupClass), [setupPrompt, setupClass]);
 
   const ensureAudio = useCallback(() => {
     if (audioRef.current) {
@@ -173,7 +196,7 @@ export default function VampirePage() {
 
   const createDrop = (game: GameState, enemy: Enemy) => {
     const roll = Math.random();
-    const partPool = getAvailablePartTypes(game.weapon.promotion);
+    const partPool = game.partPool.length > 0 ? game.partPool : getAvailablePartTypes(game.weapon.promotion);
     if (roll < 0.85) game.drops.push({ id: game.nextId++, x: enemy.x, y: enemy.y, type: "coin", life: 18 });
     else if (roll < 0.98) game.drops.push({ id: game.nextId++, x: enemy.x, y: enemy.y, type: "part", part: partPool[Math.floor(Math.random() * partPool.length)], life: 18 });
     else game.drops.push({ id: game.nextId++, x: enemy.x, y: enemy.y, type: "core", life: 18 });
@@ -457,12 +480,12 @@ export default function VampirePage() {
       const key = event.key.toLowerCase(); keysRef.current[key] = true;
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(event.key)) event.preventDefault();
       if (key === "q" && !event.repeat && modalRef.current === "upgrade") {
-        setSelectedParts(selectAllPartsMode ? getAvailablePartTypes(gameRef.current.weapon.promotion).filter((part) => gameRef.current.parts[part] > 0) : []);
+        setSelectedParts(selectAllPartsMode ? gameRef.current.partPool.filter((part) => gameRef.current.parts[part] > 0) : []);
         setSelectedTicket(null); setAttemptBoost(0); setResult([]); setGameModal(null);
       } else if (key === "q" && !event.repeat && !modalRef.current) {
         const current = gameRef.current;
         const ticketAvailable = Object.values(current.upgradeTickets).some((count) => count > 0);
-        if (current.coins >= upgradeCost(current.weapon.level) || ticketAvailable) { setSelectedParts(selectAllPartsMode ? getAvailablePartTypes(current.weapon.promotion).filter((part) => current.parts[part] > 0) : []); setSelectedTicket(null); setAttemptBoost(0); setResult([]); setGameModal("upgrade"); }
+        if (current.coins >= upgradeCost(current.weapon.level) || ticketAvailable) { setSelectedParts(selectAllPartsMode ? current.partPool.filter((part) => current.parts[part] > 0) : []); setSelectedTicket(null); setAttemptBoost(0); setResult([]); setGameModal("upgrade"); }
         else setMessage("강화에 필요한 돈이나 강화권이 없습니다.");
       }
     };
@@ -521,7 +544,7 @@ export default function VampirePage() {
       }
       else logs.push(`${PART_LABELS[part]} 부착 실패 · ${chance}%`);
     }
-    setAttemptBoost(0); setSelectedParts(selectAllPartsMode ? getAvailablePartTypes(game.weapon.promotion).filter((part) => game.parts[part] > 0) : []); setSelectedTicket(null); setResult(logs); setMessage("강화 결과를 확인하세요."); if (game.weapon.level >= 5 && !game.weapon.promotion) setGameModal("promotion"); publishSnapshot();
+    setAttemptBoost(0); setSelectedParts(selectAllPartsMode ? game.partPool.filter((part) => game.parts[part] > 0) : []); setSelectedTicket(null); setResult(logs); setMessage("강화 결과를 확인하세요."); if (game.weapon.level >= 5 && !game.weapon.promotion) setGameModal("promotion"); publishSnapshot();
   };
   const promote = (promotion: WeaponClass) => {
     const game = gameRef.current;
@@ -535,16 +558,18 @@ export default function VampirePage() {
     game.weapon.pierce = 0;
     game.weapon.knockback = 0;
     game.weapon.bleed = 0;
+    game.partPool = Array.from(new Set([...game.partPool, ...getAvailablePartTypes(promotion)])) as PartType[];
     setSelectedParts([]); setSelectAllPartsMode(false); setResult([]); setMessage(`${promotion === "shotgun" ? "샷건" : promotion === "dagger" ? "대거" : "기관총"}으로 전직했습니다.`); setGameModal(null); playTone(280, 0.3, "triangle", 0.05, 1.8); publishSnapshot();
   };
-  const restart = () => { gameRef.current = makeGame(); runningRef.current = true; setResult([]); setSelectedParts([]); setSelectAllPartsMode(false); setAutoUseCores(false); setSelectedTicket(null); setAttemptBoost(0); setMessage("어둠이 깨어났습니다. 살아남으세요."); setGameModal(null); publishSnapshot(); };
+  const startRun = () => { const config = parseSetupPrompt(setupPrompt, setupClass); gameRef.current = makeGame(config); runningRef.current = true; setResult([]); setSelectedParts([]); setSelectAllPartsMode(false); setAutoUseCores(false); setSelectedTicket(null); setAttemptBoost(0); setMessage(`${config.weaponName} 제작 완료 · 살아남으세요.`); setGameModal(null); ensureAudio(); playTone(260, 0.18, "triangle", 0.04, 1.5); publishSnapshot(); };
+  const restart = () => { runningRef.current = false; setResult([]); setSelectedParts([]); setSelectAllPartsMode(false); setAutoUseCores(false); setSelectedTicket(null); setAttemptBoost(0); setMessage("새 무기를 설계하세요."); setGameModal("setup"); };
   const pressKey = (key: string, value: boolean) => { if (value) ensureAudio(); keysRef.current[key] = value; };
   const cost = upgradeCost(snapshot.weapon.level);
   const currentWeaponChance = Math.min(99, weaponChance(snapshot.weapon) + attemptBoost);
   const currentWeaponFailChance = 100 - currentWeaponChance;
   const totalParts = PART_TYPES.reduce((sum, part) => sum + snapshot.parts[part], 0);
   const totalTickets = TICKET_LEVELS.reduce((sum, level) => sum + snapshot.upgradeTickets[level], 0);
-  const availableParts = getAvailablePartTypes(snapshot.weapon.promotion);
+  const availableParts = snapshot.partPool;
   const ownedParts = availableParts.filter((part) => snapshot.parts[part] > 0);
   const allPartsSelected = selectAllPartsMode;
   const toggleAllParts = () => {
@@ -563,7 +588,7 @@ export default function VampirePage() {
         <section className="survival-layout">
           <aside className="survival-sidebar">
             <div className="survival-card status-card"><div className="hero-chip">✦</div><div><p className="card-label">HUNTER</p><strong>DemoTest</strong></div><div className="health-track"><span style={{ width: `${(snapshot.player.hp / snapshot.player.maxHp) * 100}%` }} /></div><small>HP {Math.ceil(snapshot.player.hp)} / {snapshot.player.maxHp}</small></div>
-            <div className="survival-card weapon-card"><p className="card-label">AUTO WEAPON</p><div className="weapon-title"><span className="weapon-icon">☄</span><div><strong>Moon Shard</strong><small>LV.{snapshot.weapon.level}</small></div></div><div className="weapon-stats"><span>DMG <b>{snapshot.weapon.damage}</b></span><span>RANGE <b>{snapshot.weapon.range}</b></span><span>SHOTS <b>{snapshot.weapon.shots}</b></span></div></div>
+            <div className="survival-card weapon-card"><p className="card-label">AUTO WEAPON</p><div className="weapon-title"><span className="weapon-icon">☄</span><div><strong>{snapshot.weaponName}</strong><small>LV.{snapshot.weapon.level}</small></div></div><div className="weapon-stats"><span>DMG <b>{snapshot.weapon.damage}</b></span><span>RANGE <b>{snapshot.weapon.range}</b></span><span>SHOTS <b>{snapshot.weapon.shots}</b></span></div></div>
             <div className="survival-card resource-card"><p className="card-label">COLLECTED</p><div className="resource-line"><span className="resource-coin">₩</span><div><small>돈</small><strong>{snapshot.coins}</strong></div><span className="resource-core">✦</span><div><small>성공 코어</small><strong>{snapshot.cores}</strong></div></div><div className="part-count"><span>파츠 보유</span><b>{totalParts}</b></div></div>
             <div className="sidebar-copy"><span>DROP RATE</span><p><b>85%</b> 돈 · <b>13%</b> 파츠 · <b>2%</b> 성공 코어</p></div>
           </aside>
@@ -571,6 +596,7 @@ export default function VampirePage() {
         </section>
         <footer className="night-footer"><span>MOVE · SURVIVE · ENHANCE</span><span>THE NIGHT REMEMBERS EVERY RUN</span></footer>
       </div>
+      {modal === "setup" && <div className="modal-backdrop"><section className="setup-modal"><p className="night-kicker">WEAPON FORGE / NEW RUN</p><h2>나만의 <em>무기 만들기</em></h2><p className="setup-copy">무기 이름과 원하는 파츠를 자연어로 입력하세요. 예: <b>파이어레인 샷건, 공격력 자석 갈래 관통력</b></p><label className="setup-label">무기 제작 프롬프트<textarea value={setupPrompt} onChange={(event) => setSetupPrompt(event.target.value)} placeholder="예: 파이어레인 샷건, 공격력 자석 갈래 관통력" /></label><div className="setup-class-grid"><button className={setupClass === null ? "active" : ""} onClick={() => setSetupClass(null)}>프롬프트 자동 감지</button><button className={setupClass === "shotgun" ? "active" : ""} onClick={() => setSetupClass("shotgun")}>샷건</button><button className={setupClass === "dagger" ? "active" : ""} onClick={() => setSetupClass("dagger")}>대거</button><button className={setupClass === "machinegun" ? "active" : ""} onClick={() => setSetupClass("machinegun")}>기관총</button></div><div className="setup-preview"><span>인식된 무기</span><strong>{setupPreview.weaponName} · {setupPreview.startClass === "shotgun" ? "샷건" : setupPreview.startClass === "dagger" ? "대거" : setupPreview.startClass === "machinegun" ? "기관총" : "기본 자동무기"}</strong><small>시작 파츠: {setupPreview.parts.length > 0 ? setupPreview.parts.map((part) => PART_LABELS[part]).join(" · ") : "없음"} · 선택 파츠는 각 3개 지급</small></div><button className="enhance-button" onClick={startRun}>무기 제작하고 시작하기</button></section></div>}
       {modal === "upgrade" && <div className="modal-backdrop"><section className="enhance-modal"><div className="modal-heading"><div><p className="night-kicker">WORKSHOP / WEAPON ENHANCE</p><h2>무기를 <em>강화하세요</em></h2></div><span className="cost-badge">₩ {cost}</span></div><div className="enhance-compare"><div><small>CURRENT</small><strong>LV.{snapshot.weapon.level}</strong><span>DMG {snapshot.weapon.damage} · RANGE {snapshot.weapon.range}</span></div><b>→</b><div className="next"><small>ON SUCCESS</small><strong>LV.{snapshot.weapon.level + 1}</strong><span>DMG {nextStats.damage} · RANGE {nextStats.range}</span></div></div><div className="chance-panel"><div><span>무기 강화 성공확률</span><strong>{currentWeaponChance}%</strong></div><div className="chance-track"><i style={{ width: `${currentWeaponChance}%` }} /></div><small>강화 레벨이 오를수록 기본 확률이 내려갑니다.</small></div><div className="parts-heading"><div><p className="night-kicker">OPTIONAL PARTS</p><h3>파츠를 함께 넣기</h3></div><button className={`core-use ${attemptBoost ? "used" : ""}`} onClick={useCore} disabled={snapshot.cores === 0 || attemptBoost >= 10}>✦ 성공 코어 +5% {attemptBoost ? `(${attemptBoost}%)` : ""}</button></div><div className="part-grid">{availableParts.map((part) => { const chance = Math.min(95, partChance(snapshot.weapon, part) + attemptBoost); const selected = selectedParts.includes(part); const incomeLocked = part === "income" && (snapshot.weapon.level < 30 || snapshot.weapon.installed.income >= 1); return <button key={part} className={`part-option ${selected ? "chosen" : ""}`} onClick={() => togglePart(part)} disabled={snapshot.parts[part] === 0 || incomeLocked}><span className="part-symbol">{PART_ICONS[part]}</span><span><strong>{PART_LABELS[part]}</strong><small>{incomeLocked ? (snapshot.weapon.level < 30 ? "무기 LV.30 필요" : "1회 설치 완료") : `보유 ${snapshot.parts[part]} · 성공 ${chance}%`}</small></span><i>{selected ? "✓" : "+"}</i></button>; })}</div>{result.length > 0 && <div className="enhance-result">{result.map((line) => <p key={line}>{line}</p>)}</div>}<button className="enhance-button" onClick={enhance}>강화 시도 <span>₩ {cost}</span></button></section></div>}
       {modal === "upgrade" && totalTickets > 0 && <div className="ticket-dock"><span>확정 강화권</span>{TICKET_LEVELS.map((level) => <button key={level} className={selectedTicket === level ? "active" : ""} disabled={snapshot.upgradeTickets[level] === 0} onClick={() => setSelectedTicket(selectedTicket === level ? null : level)}>{level}LV <small>x{snapshot.upgradeTickets[level]}</small></button>)}</div>}
       {modal === "upgrade" && <button className={`parts-select-dock ${allPartsSelected ? "active" : ""}`} onClick={toggleAllParts}>{allPartsSelected ? "보유 파츠 전체 해제" : "보유 파츠 전부 선택"}</button>}
