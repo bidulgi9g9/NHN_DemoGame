@@ -557,7 +557,7 @@ export default function VampirePage() {
     <main className="night-page">
       <div className="night-shell">
         <header className="night-header">
-          <div><p className="night-kicker">NIGHTFALL PROTOCOL · RUN 01</p><h1>Vampire <em>Survivor</em></h1></div>
+          <div><p className="night-kicker">NIGHTFALL PROTOCOL · RUN 01</p><h1>Weapon <em>Master</em></h1></div>
           <div className="night-header-right"><span className="live-pill"><i /> LIVE RUN</span><span className="night-tip">WASD / 방향키 이동 · Q 강화</span></div>
         </header>
         <section className="survival-layout">
@@ -576,7 +576,7 @@ export default function VampirePage() {
       {modal === "upgrade" && <button className={`parts-select-dock ${allPartsSelected ? "active" : ""}`} onClick={toggleAllParts}>{allPartsSelected ? "보유 파츠 전체 해제" : "보유 파츠 전부 선택"}</button>}
       {modal === "upgrade" && <div className="chance-dock"><span>현재 강화확률</span><b>성공 {currentWeaponChance}%</b><i>실패 {currentWeaponFailChance}%</i></div>}
       {modal === "promotion" && <div className="modal-backdrop"><section className="promotion-modal"><p className="night-kicker">CLASS CHANGE / LV.5</p><h2>전직을 <em>선택하세요</em></h2><p className="promotion-copy">무기 공격 방식과 전용 파츠가 바뀝니다. 공격력·자석·돈 수급은 계속 유지됩니다.</p><div className="promotion-grid"><button className="promotion-option" onClick={() => promote("shotgun")}><strong>샷건</strong><span>마우스 방향 5갈래 발사</span><small>갈래 · 타수 · 관통 · 넉백 · 공속</small></button><button className="promotion-option" onClick={() => promote("dagger")}><strong>대거</strong><span>마우스 방향 60° 베기</span><small>각도 · 타수 · 출혈 · 공속</small></button><button className="promotion-option" onClick={() => promote("machinegun")}><strong>기관총</strong><span>가까운 적 집중 공격</span><small>빠른 공속 · 공격 목표 추가</small></button></div></section></div>}
-      {modal === "gameover" && <div className="modal-backdrop"><section className="gameover-modal"><p className="night-kicker">RUN COMPLETE</p><h2>밤을 <em>지배했습니다.</em></h2><p>{formatTime(snapshot.elapsed)} 동안 {snapshot.kills}마리 처치 · 최종 무기 LV.{snapshot.weapon.level}</p><button className="enhance-button" onClick={restart}>다시 시작하기</button></section></div>}
+      {modal === "gameover" && <div className="modal-backdrop"><section className="gameover-modal"><p className="night-kicker">RUN COMPLETE</p><h2>무기의 밤을 <em>지배했습니다.</em></h2><p>{formatTime(snapshot.elapsed)} 동안 {snapshot.kills}마리 처치 · 최종 무기 LV.{snapshot.weapon.level}</p><button className="enhance-button" onClick={restart}>다시 시작하기</button></section></div>}
       {modal === "upgrade" && <button className={`core-auto-dock ${autoUseCores ? "active" : ""}`} onClick={() => setAutoUseCores((enabled) => !enabled)}>성공 코어 자동 사용 · {autoUseCores ? "ON" : "OFF"}</button>}
       {modal === "upgrade" && <div className="balance-dock">남은 돈 ₩ {snapshot.coins}</div>}
       <div className="next-cost-hud">다음 강화까지 ₩ {Math.max(0, cost - snapshot.coins)}</div>
